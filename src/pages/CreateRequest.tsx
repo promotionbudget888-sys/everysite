@@ -508,7 +508,7 @@ const CreateRequest = () => {
             </DialogHeader>
             <div className="space-y-4 py-2">
               <p className="text-sm text-muted-foreground">
-                งบ Matching Fund แบ่งเป็น 2 ส่วน ดังนี้:
+                งบประมาณในระบบนี้จะแสดง เฉพาะงบส่งเสริมของบริษัทเท่านั้นโดยผู้จัดการแข่งขันต้อง สมทบงบในจำนวนเท่ากัน (50%)
               </p>
               <div className="grid grid-cols-2 gap-3">
                 <Card className="border-primary/20 bg-primary/5">
@@ -526,14 +526,14 @@ const CreateRequest = () => {
               </div>
               <div className="rounded-lg bg-muted/50 p-4 space-y-2">
                 <p className="text-sm font-medium">ตัวอย่าง:</p>
-                <p className="text-sm text-muted-foreground">หากทำการเบิก <span className="font-semibold text-foreground">1,000 บาท</span></p>
+                <p className="text-sm text-muted-foreground">หากต้องการใช้งบรวม <span className="font-semibold text-foreground">5,000 บาท</span></p>
                 <ul className="text-sm text-muted-foreground space-y-1 ml-4 list-disc">
-                  <li><span className="font-semibold text-foreground">500 บาท</span> จะตัดจากงบส่งเสริม</li>
-                  <li><span className="font-semibold text-foreground">500 บาท</span> จะตัดจากงบของผู้จัดการฝ่าย</li>
+                  <li><span className="font-semibold text-foreground">2,500 บาท</span> (กรอกในระบบ)</li>
+                  <li><span className="font-semibold text-foreground">2,500 บาท</span> เงินสมทบจากผู้จัดการแข่งขัน</li>
                 </ul>
               </div>
               <p className="text-sm text-muted-foreground">
-                กรุณาดำเนินการเบิกให้ถูกต้องตามสัดส่วนที่กำหนด
+                หมายเหตุ:ตัวเลขที่กรอกในหน้าคำขอเปิดโครงการ คือ เฉพาะงบส่งเสริมเท่านั้น ระบบจะไม่รวมงบสมทบของผู้จัดการแข่งขัน
               </p>
             </div>
             <DialogFooter className="gap-2 sm:gap-0">
