@@ -238,5 +238,3 @@ export default function MyRequests() {
         </AlertDialog>
       </section>
     </AppLayout>
-  );
-}
