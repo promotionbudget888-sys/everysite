@@ -31,7 +31,8 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 type RequestType = "matching_fund" | "everysite";
 
-const SIZE_S_CODE_REGEX = /^T\d{5,6}$/;
+const SIZE_S_CODE_REGEX = /^[A-Z0-9]{6}(,[A-Z0-9]{6})*$/;
+
 const REQUEST_FORM_VIEW_URL = "https://drive.google.com/file/d/1z2HPMUC_0fs1-dbwXTDcwGUOZygQYbqm/view?usp=sharing";
 
 const formSchema = z.object({
@@ -50,7 +51,11 @@ const formSchema = z.object({
     if (!data.size_code || !SIZE_S_CODE_REGEX.test(data.size_code)) return false;
   }
   return true;
-}, { message: "กรุณากรอกรหัสในรูปแบบ Txxxxx (เช่น T00001)", path: ["size_code"] });
+}, { 
+  /* ✅ แก้ข้อความ */
+  message: "กรุณากรอกรหัส 6 ตัว เช่น A00000 หรือ A00000,B00000", 
+  path: ["size_code"] 
+});
 
 type FormData = z.infer<typeof formSchema>;
 
