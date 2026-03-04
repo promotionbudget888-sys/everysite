@@ -529,7 +529,7 @@ const CreateRequest = () => {
                 <p className="text-sm text-muted-foreground">หากต้องการใช้งบรวม <span className="font-semibold text-foreground">5,000 บาท</span></p>
                 <ul className="text-sm text-muted-foreground space-y-1 ml-4 list-disc">
                   <li><span className="font-semibold text-foreground">2,500 บาท</span> (กรอกในระบบ)</li>
-                  <li><span className="font-semibold text-foreground">2,500 บาท</span> เงินสมทบจากผู้จัดการแข่งขัน</li>
+                  <li><span className="font-semibold text-foreground">2,500 บาท</span> เงินสมทบจากผู้จัดการฝ่าย</li>
                 </ul>
               </div>
               <p className="text-sm text-muted-foreground">
