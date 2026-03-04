@@ -459,10 +459,7 @@ export default function AllRequests() {
       const newStatus = getNewStatus(actionType);
 
       const payload = {
-        mode:
-          actionType === "review" || actionType === "finalize"
-            ? "approve"
-            : actionType,
+        mode: "approve",
         id: selectedRequest.id,
         status: newStatus,
         notes: actionNotes || "",
