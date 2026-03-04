@@ -508,7 +508,7 @@ const CreateRequest = () => {
             </DialogHeader>
             <div className="space-y-4 py-2">
               <p className="text-sm text-muted-foreground">
-                งบประมาณในระบบนี้จะแสดง เฉพาะงบส่งเสริมของบริษัทเท่านั้นโดยผู้จัดการแข่งขันต้อง สมทบงบในจำนวนเท่ากัน (50%)
+                งบประมาณในระบบนี้จะแสดง เฉพาะงบส่งเสริมของบริษัทเท่านั้นโดยผู้จัดการฝ่าย ต้องสมทบงบในจำนวนเท่ากัน (50%)
               </p>
               <div className="grid grid-cols-2 gap-3">
                 <Card className="border-primary/20 bg-primary/5">
