@@ -1,6 +1,7 @@
 import { getSavedProfile, getToken } from '@/lib/auth';
 
-const API_URL_NOT_READY_MSG = "ระบบกำลังโหลดการตั้งค่า กรุณารีเฟรชหน้าเว็บแล้วลองใหม่อีกครั้ง";
+// ต้องตรงกับ CONFIG.SECRET_TOKEN ใน GAS
+const SECRET_TOKEN = "g7Jd93LsKqV4mX2pYtR8nH1bC6wZ5eT0uQ9aF3kL2sV7dN4pX6cM8rT1yW0zU5h";
 
 const AUDIT_SKIP_MODES = new Set([
   "",
@@ -21,14 +22,6 @@ const AUDIT_SKIP_MODES = new Set([
   "upload_attachment",
 ]);
 
-function getApiUrl(): string {
-  const url = import.meta.env.VITE_GOOGLE_SCRIPT_URL;
-  if (!url) {
-    console.warn("VITE_GOOGLE_SCRIPT_URL is not set — refresh the page after secrets are configured");
-  }
-  return url || "";
-}
-
 export interface ApiResponse<T = any> {
   success: boolean;
   data?: T;
@@ -45,32 +38,43 @@ function shouldLogAudit(mode: string): boolean {
 
 function inferTargetType(mode: string): string {
   if (mode.includes("user")) return "user";
-  if (mode.includes("request") || ["create", "update", "delete", "approve", "reject", "update_status"].includes(mode)) {
+  if (
+    mode.includes("request") ||
+    ["create", "update", "delete", "approve", "reject", "update_status", "set_competing", "set_paid"].includes(mode)
+  ) {
     return "request";
   }
   return "system";
 }
 
-function buildAuditPayload(mode: string, body: Record<string, any>): Record<string, any> {
+function buildAuditPayload(
+  mode: string,
+  body: Record<string, any>
+): Record<string, any> {
   const profile = getSavedProfile();
   const detailParts: string[] = [];
 
   if (body.status !== undefined) detailParts.push(`status=${body.status}`);
   if (body.role !== undefined) detailParts.push(`role=${body.role}`);
   if (body.budget_matching_fund !== undefined || body.budget_everysite !== undefined) {
-    detailParts.push(`budget_mf=${Number(body.budget_matching_fund ?? 0)}, budget_es=${Number(body.budget_everysite ?? 0)}`);
+    detailParts.push(
+      `budget_mf=${Number(body.budget_matching_fund ?? 0)}, budget_es=${Number(body.budget_everysite ?? 0)}`
+    );
   }
 
   const targetId = body.target_id ?? body.id ?? body.request_id ?? body.user_id ?? null;
+  const detailWithAction =
+    mode +
+    (detailParts.length > 0
+      ? ": " + detailParts.join(", ")
+      : body.title
+      ? ": " + body.title
+      : "");
 
-  // IMPORTANT: GAS routing uses `data.action || data.mode`.
-  // If we set action="create", GAS routes to handleRequestCreated instead of handleLogAudit.
-  // So we set action="log_audit" for routing, and put the real action name in "detail".
-  const realAction = mode;
-  const detailWithAction = realAction + (detailParts.length > 0 ? ": " + detailParts.join(", ") : (body.title ? ": " + body.title : ""));
   return {
     mode: "log_audit",
-    action: "log_audit",       // for GAS routing — must match mode
+    action: "log_audit",
+    _token: SECRET_TOKEN,
     actor_name: profile?.full_name || "System",
     actor_role: profile?.role || "system",
     target_type: inferTargetType(mode),
@@ -80,59 +84,45 @@ function buildAuditPayload(mode: string, body: Record<string, any>): Record<stri
   };
 }
 
-async function sendAuditLogIfNeeded(mode: string, body: Record<string, any>) {
-  if (!shouldLogAudit(mode)) return;
-
-  const payload = buildAuditPayload(mode, body);
-  const auditResult = await callViaProxy("POST", payload);
-  if (!auditResult.success) {
-    console.warn("Audit log failed:", auditResult.error);
-  }
-}
-
-function authHeaders(): Record<string, string> {
-  const headers: Record<string, string> = { "Content-Type": "text/plain" };
-  const token = getToken();
-  if (token) {
-    headers["Authorization"] = `Bearer ${token}`;
-  }
-  return headers;
-}
+// ─── Supabase Proxy ───────────────────────────────────────────────────────────
 
 function getProxyUrl(): string {
   const baseUrl = import.meta.env.VITE_SUPABASE_URL;
+  if (!baseUrl) console.error("❌ VITE_SUPABASE_URL ยังไม่ได้ตั้งค่าใน .env");
   return baseUrl ? `${baseUrl}/functions/v1/google-script-proxy` : "";
 }
 
-function proxyHeaders(token?: string): Record<string, string> {
+function proxyHeaders(): Record<string, string> {
   const publishableKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+  const token = getToken() || "";
   const headers: Record<string, string> = { "Content-Type": "application/json" };
-
   if (publishableKey) {
     headers["apikey"] = publishableKey;
     headers["Authorization"] = `Bearer ${publishableKey}`;
   }
-
   if (token) {
     headers["x-app-token"] = token;
   }
-
   return headers;
 }
 
-async function callViaProxy<T = any>(
+async function callProxy<T = any>(
   method: "GET" | "POST",
   payload: Record<string, any>
 ): Promise<ApiResponse<T>> {
   const proxyUrl = getProxyUrl();
-  if (!proxyUrl) return { success: false, error: API_URL_NOT_READY_MSG };
+  if (!proxyUrl) {
+    return { success: false, error: "ระบบยังไม่ได้ตั้งค่า กรุณาติดต่อผู้ดูแลระบบ" };
+  }
+
+  // ✅ inject _token ทุก request เพื่อผ่าน GAS auth check
+  const payloadWithToken = { ...payload, _token: SECRET_TOKEN };
 
   try {
-    const token = getToken() || "";
     const res = await fetch(proxyUrl, {
       method: "POST",
-      headers: proxyHeaders(token),
-      body: JSON.stringify({ method, payload }),
+      headers: proxyHeaders(),
+      body: JSON.stringify({ method, payload: payloadWithToken }),
     });
 
     if (!res.ok) {
@@ -140,11 +130,12 @@ async function callViaProxy<T = any>(
     }
 
     const json = await res.json();
+
     if (!json?.success) {
       return { success: false, error: json?.error || "Proxy request failed" };
     }
 
-    // Unwrap nested GAS response: proxy returns {success, data: {success, data: ...}}
+    // unwrap: proxy { success, data: GAS { success, data } }
     const inner = json.data;
     if (inner && typeof inner === "object" && "success" in inner) {
       if (!inner.success) {
@@ -155,80 +146,38 @@ async function callViaProxy<T = any>(
 
     return { success: true, data: inner as T };
   } catch (err) {
-    console.error("Proxy API error:", err);
+    console.error("Proxy error:", err);
     return { success: false, error: String(err) };
   }
 }
 
-/**
- * GET request to Google Apps Script
- */
+// ─── Audit Log (fire-and-forget) ─────────────────────────────────────────────
+
+function sendAuditLogIfNeeded(mode: string, body: Record<string, any>) {
+  if (!shouldLogAudit(mode)) return;
+  const payload = buildAuditPayload(mode, body);
+  callProxy("POST", payload).catch((err) =>
+    console.warn("Audit log failed:", err)
+  );
+}
+
+// ─── Public API ───────────────────────────────────────────────────────────────
+
 export async function apiGet<T = any>(
   params: Record<string, string>
 ): Promise<ApiResponse<T>> {
-  try {
-    const API_URL = getApiUrl();
-    if (!API_URL) {
-      return callViaProxy<T>("GET", params);
-    }
-
-    const url = new URL(API_URL);
-    Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
-
-    const res = await fetch(url.toString(), {
-      method: "GET",
-      headers: authHeaders(),
-    });
-
-    if (!res.ok) {
-      return { success: false, error: `HTTP ${res.status}` };
-    }
-
-    const json = await res.json();
-    return { success: true, data: json };
-  } catch (err) {
-    console.error("API GET error:", err);
-    return { success: false, error: String(err) };
-  }
+  return callProxy<T>("GET", params);
 }
 
-/**
- * POST request to Google Apps Script
- */
 export async function apiPost<T = any>(
   body: Record<string, any>
 ): Promise<ApiResponse<T>> {
-  try {
-    const mode = getRequestMode(body);
-    const API_URL = getApiUrl();
-    let result: ApiResponse<T>;
+  const mode = getRequestMode(body);
+  const result = await callProxy<T>("POST", body);
 
-    if (!API_URL) {
-      result = await callViaProxy<T>("POST", body);
-    } else {
-      const res = await fetch(API_URL, {
-        method: "POST",
-        headers: authHeaders(),
-        body: JSON.stringify(body),
-      });
-
-      if (!res.ok) {
-        return { success: false, error: `HTTP ${res.status}` };
-      }
-
-      const json = await res.json();
-      result = { success: true, data: json };
-    }
-
-    if (result.success) {
-      await sendAuditLogIfNeeded(mode, body);
-    }
-
-    return result;
-  } catch (err) {
-    console.error("API POST error:", err);
-    return { success: false, error: String(err) };
+  if (result.success) {
+    sendAuditLogIfNeeded(mode, body);
   }
+
+  return result;
 }
-
-

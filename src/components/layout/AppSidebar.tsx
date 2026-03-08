@@ -1,4 +1,4 @@
-import { FileText, Users, Building2, ClipboardList, History, LogOut, Settings, Trophy, Upload } from 'lucide-react';
+import { FileText, Users, ClipboardList, History, LogOut, Settings, Trophy, Upload } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { getRoleLabel } from '@/lib/auth';
@@ -56,7 +56,7 @@ export function AppSidebar() {
       return [
         { title: 'คำขอทั้งหมด', url: '/all-requests', icon: FileText },
         { title: 'จัดการผู้ใช้', url: '/users', icon: Users },
-        { title: 'จัดการโซน', url: '/zones', icon: Building2 },
+        // ✅ ลบ จัดการโซน ออกแล้ว
         { title: 'ประวัติการใช้งาน', url: '/audit-logs', icon: History },
         { title: 'ตั้งค่าระบบ', url: '/settings', icon: Settings },
       ];
@@ -71,31 +71,19 @@ export function AppSidebar() {
     <Sidebar className="border-r-0">
       <SidebarHeader className="p-4 border-b border-sidebar-border">
         <div className="flex items-center gap-3">
-
           <div className="w-10 h-10 rounded-lg bg-white flex items-center justify-center shadow-sm">
-           <img
-              src="/logo.png"
-              alt="Logo"
-              className="w-10 h-10 object-contain"
-              />
+            <img src="/logo.png" alt="Logo" className="w-10 h-10 object-contain" />
           </div>
-
           <div>
-            <h1 className="text-lg font-bold text-sidebar-foreground">
-              งบส่งเสริม
-            </h1>
-            <p className="text-xs text-sidebar-muted">
-              Everysite Funds
-            </p>
+            <h1 className="text-lg font-bold text-sidebar-foreground">งบส่งเสริม</h1>
+            <p className="text-xs text-sidebar-muted">Everysite Funds</p>
           </div>
         </div>
       </SidebarHeader>
 
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel className="text-sidebar-muted">
-            เมนูหลัก
-          </SidebarGroupLabel>
+          <SidebarGroupLabel className="text-sidebar-muted">เมนูหลัก</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {menuItems.map((item) => (
@@ -132,10 +120,7 @@ export function AppSidebar() {
             <p className="text-sm font-medium text-sidebar-foreground truncate">
               {profile?.full_name || 'ผู้ใช้งาน'}
             </p>
-            <Badge
-              variant="outline"
-              className="text-xs bg-sidebar-accent border-sidebar-border text-sidebar-muted"
-            >
+            <Badge variant="outline" className="text-xs bg-sidebar-accent border-sidebar-border text-sidebar-muted">
               {profile?.role ? getRoleLabel(profile.role) : 'ไม่ระบุ'}
             </Badge>
           </div>

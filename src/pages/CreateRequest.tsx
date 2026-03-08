@@ -31,7 +31,6 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 type RequestType = "matching_fund" | "everysite";
 
-const SIZE_S_CODE_REGEX = /^T\d{5,6}$/;
 const REQUEST_FORM_VIEW_URL = "https://drive.google.com/file/d/1z2HPMUC_0fs1-dbwXTDcwGUOZygQYbqm/view?usp=sharing";
 
 const formSchema = z.object({
@@ -40,17 +39,25 @@ const formSchema = z.object({
   request_type: z.enum(["matching_fund", "everysite"], { required_error: "กรุณาเลือกประเภทงบ" }),
   size: z.enum(["S", "M", "L"]).optional(),
   size_code: z.string().optional(),
-  amount: z.string().min(1, "กรุณาระบุจำนวนเงิน").refine((val) => !isNaN(Number(val)) && Number(val) > 0, "จำนวนเงินต้องมากกว่า 0"),
+  amount: z.string().min(1, "กรุณาระบุจำนวนเงิน").refine(
+    (val) => !isNaN(Number(val)) && Number(val) > 0,
+    "จำนวนเงินต้องมากกว่า 0"
+  ),
 }).refine((data) => {
   if (data.request_type === "everysite" && !data.size) return false;
   return true;
 }, { message: "กรุณาเลือกไซส์สำหรับ Everysite", path: ["size"] })
 .refine((data) => {
   if (data.request_type === "everysite" && data.size === "S") {
-    if (!data.size_code || !SIZE_S_CODE_REGEX.test(data.size_code)) return false;
+    // กรอกกี่ตัวก็ได้ แค่ต้องมีค่า
+    const raw = (data.size_code || "").replace(/,/g, "");
+    return raw.length > 0;
   }
   return true;
-}, { message: "กรุณากรอกรหัสในรูปแบบ Txxxxx (เช่น T00001)", path: ["size_code"] });
+}, {
+  message: "กรุณากรอกรหัสอย่างน้อย 1 ตัว",
+  path: ["size_code"],
+});
 
 type FormData = z.infer<typeof formSchema>;
 
@@ -74,7 +81,6 @@ function fileToBase64(file: File): Promise<string> {
     const reader = new FileReader();
     reader.onload = () => {
       const result = reader.result as string;
-      // Remove data URL prefix (e.g. "data:application/pdf;base64,")
       const base64 = result.split(",")[1] || result;
       resolve(base64);
     };
@@ -197,7 +203,7 @@ const CreateRequest = () => {
 
       if (!res.success) throw new Error(res.error || "ไม่สามารถสร้างคำขอได้");
 
-      // กันงบทันที — เพิ่ม pending ใน profile
+      // กันงบทันที
       try {
         const pendingField = data.request_type === "matching_fund" ? "pending_matching_fund" : "pending_everysite";
         const currentPending = data.request_type === "matching_fund"
@@ -212,14 +218,15 @@ const CreateRequest = () => {
       }
 
       const requestId = res.data?.id;
+      let uploadedDriveUrl = "";
 
-      // Upload files to Google Drive
+      // ✅ Upload files to Google Drive และเก็บ URL แรกที่ได้
       if (requestId && files.length > 0) {
         const zoneName = profile.zone_id ? `Zone-${profile.zone_id}` : "Unknown";
         for (const f of files) {
           try {
             const base64 = await fileToBase64(f.file);
-            await apiPost({
+            const uploadRes = await apiPost({
               mode: "upload_attachment",
               action: "upload_attachment",
               fileName: f.file.name,
@@ -229,6 +236,10 @@ const CreateRequest = () => {
               zoneName,
               requestId,
             });
+            // ✅ เก็บ folderUrl จาก response แรก
+            if (!uploadedDriveUrl && uploadRes?.data?.folderUrl) {
+              uploadedDriveUrl = uploadRes.data.folderUrl;
+            }
           } catch (uploadErr) {
             console.error("File upload error:", uploadErr);
             toast({
@@ -238,6 +249,19 @@ const CreateRequest = () => {
             });
           }
         }
+
+        // ✅ ส่ง LINE แจ้งเตือนครั้งเดียว หลังอัปโหลดเสร็จ (มี drive_url ถ้าอัปโหลดสำเร็จ)
+        await apiPost({
+          mode: "notify_line",
+          type: "request_created",
+          title: data.title.trim(),
+          amount: Math.round(amount).toLocaleString(),
+          requester_name: profile.full_name,
+          zone_id: profile.zone_id || "-",
+          department: profile.department || "-",
+          affiliation: profile.affiliation || "-",
+          drive_url: uploadedDriveUrl || "",
+        });
       }
 
       toast({ title: "สร้างคำขอสำเร็จ", description: "คำขอของคุณถูกส่งเพื่อรอการตรวจสอบแล้ว" });
@@ -390,50 +414,53 @@ const CreateRequest = () => {
               </CardContent>
             </Card>
 
-{selectedType === "everysite" && selectedSize === "S" && (
-  <Card className="border-primary/50">
-    <CardHeader>
-      <CardTitle className="flex items-center gap-2">
-        รหัสไซส์ S
-        <Badge variant="outline" className="text-xs">บังคับ</Badge>
-      </CardTitle>
-      <CardDescription>
-        ใส่ได้เฉพาะตัวอักษรภาษาอังกฤษและตัวเลข (ระบบจะแบ่งทุก 6 ตัวอัตโนมัติ)
-      </CardDescription>
-    </CardHeader>
-    <CardContent>
-      <FormField
-        control={form.control}
-        name="size_code"
-        render={({ field }) => (
-          <FormItem>
-            <FormLabel>รหัส *</FormLabel>
-            <FormControl>
-              <Input
-                placeholder="เช่น A00000,B00000"
-                value={field.value || ""}
-                onChange={(e) => {
-                  let value = e.target.value;
-
-                  value = value.replace(/[^A-Za-z0-9]/g, "");
-                  value = value.toUpperCase();
-                  const chunks = value.match(/.{1,6}/g);
-                  const formatted = chunks ? chunks.join(",") : "";
-
-                  field.onChange(formatted);
-                }}
-              />
-            </FormControl>
-            <FormDescription>
-              ระบบจะจัดรูปแบบให้อัตโนมัติทุก 6 ตัวอักษร
-            </FormDescription>
-            <FormMessage />
-          </FormItem>
-        )}
-      />
-    </CardContent>
-  </Card>
-)}
+            {/* ✅ ช่องกรอกรหัสไซส์ S */}
+            {selectedType === "everysite" && selectedSize === "S" && (
+              <Card className="border-primary/50">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    รหัสไซส์ S
+                    <Badge variant="outline" className="text-xs">บังคับ</Badge>
+                  </CardTitle>
+                  <CardDescription>
+                    กรอกรหัสตัวอักษรและตัวเลข ระบบจะใส่ , ให้อัตโนมัติทุก 6 ตัว เช่น A12121,121221,212121
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <FormField
+                    control={form.control}
+                    name="size_code"
+                    render={({ field }) => {
+                      // แสดงจำนวนรหัสที่กรอกแล้ว
+                      return (
+                        <FormItem>
+                          <FormLabel>รหัส *</FormLabel>
+                          <FormControl>
+                            <Input
+                              placeholder="เช่น A12121,121221,212121"
+                              value={field.value || ""}
+                              onChange={(e) => {
+                                let value = e.target.value;
+                                value = value.replace(/[^A-Za-z0-9]/g, "");
+                                value = value.toUpperCase();
+                                // ✅ ใส่ , ทุก 6 ตัวอัตโนมัติ กรอกกี่ตัวก็ได้
+                                const chunks = value.match(/.{1,6}/g);
+                                const formatted = chunks ? chunks.join(",") : "";
+                                field.onChange(formatted);
+                              }}
+                            />
+                          </FormControl>
+                          <FormDescription>
+                            กรอกตัวอักษรหรือตัวเลขได้ไม่จำกัด ระบบจะใส่ , ให้อัตโนมัติทุก 6 ตัว
+                          </FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      );
+                    }}
+                  />
+                </CardContent>
+              </Card>
+            )}
 
             <Card className="border-primary/50">
               <CardHeader>
@@ -494,10 +521,7 @@ const CreateRequest = () => {
 
         {/* Matching Fund Info Dialog */}
         <Dialog open={showMFInfo} onOpenChange={(open) => {
-          if (!open) {
-            setShowMFInfo(false);
-            setPendingMFChange(null);
-          }
+          if (!open) { setShowMFInfo(false); setPendingMFChange(null); }
         }}>
           <DialogContent className="sm:max-w-lg">
             <DialogHeader>
@@ -508,7 +532,7 @@ const CreateRequest = () => {
             </DialogHeader>
             <div className="space-y-4 py-2">
               <p className="text-sm text-muted-foreground">
-                งบ Matching Fund แบ่งเป็น 2 ส่วน ดังนี้:
+                งบประมาณในระบบนี้จะแสดง เฉพาะงบส่งเสริมของบริษัทเท่านั้นโดยผู้จัดการฝ่าย ต้องสมทบงบในจำนวนเท่ากัน (50%)
               </p>
               <div className="grid grid-cols-2 gap-3">
                 <Card className="border-primary/20 bg-primary/5">
@@ -526,30 +550,23 @@ const CreateRequest = () => {
               </div>
               <div className="rounded-lg bg-muted/50 p-4 space-y-2">
                 <p className="text-sm font-medium">ตัวอย่าง:</p>
-                <p className="text-sm text-muted-foreground">หากทำการเบิก <span className="font-semibold text-foreground">1,000 บาท</span></p>
+                <p className="text-sm text-muted-foreground">หากต้องการใช้งบรวม <span className="font-semibold text-foreground">5,000 บาท</span></p>
                 <ul className="text-sm text-muted-foreground space-y-1 ml-4 list-disc">
-                  <li><span className="font-semibold text-foreground">500 บาท</span> จะตัดจากงบส่งเสริม</li>
-                  <li><span className="font-semibold text-foreground">500 บาท</span> จะตัดจากงบของผู้จัดการฝ่าย</li>
+                  <li><span className="font-semibold text-foreground">2,500 บาท</span> (กรอกในระบบ)</li>
+                  <li><span className="font-semibold text-foreground">2,500 บาท</span> เงินสมทบจากผู้จัดการฝ่าย</li>
                 </ul>
               </div>
               <p className="text-sm text-muted-foreground">
-                กรุณาดำเนินการเบิกให้ถูกต้องตามสัดส่วนที่กำหนด
+                หมายเหตุ: ตัวเลขที่กรอกในหน้าคำขอเปิดโครงการ คือ เฉพาะงบส่งเสริมเท่านั้น ระบบจะไม่รวมงบสมทบของผู้จัดการฝ่าย
               </p>
             </div>
             <DialogFooter className="gap-2 sm:gap-0">
-              <Button variant="outline" onClick={() => {
-                setShowMFInfo(false);
-                setPendingMFChange(null);
-              }}>
-                ย้อนกลับ
-              </Button>
+              <Button variant="outline" onClick={() => { setShowMFInfo(false); setPendingMFChange(null); }}>ย้อนกลับ</Button>
               <Button onClick={() => {
                 if (pendingMFChange) pendingMFChange("matching_fund");
                 setShowMFInfo(false);
                 setPendingMFChange(null);
-              }}>
-                ยอมรับ
-              </Button>
+              }}>ยอมรับ</Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
